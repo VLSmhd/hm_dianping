@@ -1,7 +1,6 @@
 package com.vls.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.vls.dto.Result;
 import com.vls.dto.ScrollResult;
@@ -21,7 +20,6 @@ import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -130,8 +128,6 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         return Result.ok(userDTOS);
     }
 
-
-
     @Override
     public Result saveBlog(Blog blog) {
         //保存数据到数据库
@@ -144,33 +140,44 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         }
         //保存到redis中对应用户的收件箱。  收件箱：sortedSet
             //查询所有粉丝
-        //当前用户就是大V，所以要查follow_user_id表
+            //当前用户就是up，所以要根据userId查follow_user_id表
         List<Follow> fans = followService.query().eq("follow_user_id", userId).list();
             //发到粉丝收件箱
         for (Follow fan : fans) {
+            //每个粉丝都有个对应的收件箱。
             Long fanId = fan.getUserId();
             String key = RedisConstants.FEED_FANS_KEY + fanId;
+            //按照时间戳排序
             stringRedisTemplate.opsForZSet().add(key, blog.getId().toString(), System.currentTimeMillis());
-
         }
         return Result.ok(blog.getId());
     }
 
+    /**
+     * 滚动分页查询收件箱
+     * @param max        相当于lastId
+     * @param offset
+     * @return
+     */
     @Override
     public Result queryBlogOfFollow(Long max, Integer offset) {
         //获取当前用户
         UserDTO currentUser = UserHolder.getUser();
         //查询收件箱   ZREVRANGEBYSCORE KEY MAX min withscores limit offset count
         String key = RedisConstants.FEED_FANS_KEY + currentUser.getId();
+        //获取分页查询的结果
         Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet()
                 .reverseRangeByScoreWithScores(key, 0, max, offset, 3);
         if(typedTuples == null || typedTuples.isEmpty()){
             return Result.ok();
         }
-        //解析数据：blogId   minTime（上次分页查询的最小时间戳）  , offset(以上次查询的与score最小值相同的元素的个数，作为偏移量，防止重复数据）
+
+        //解析数据,需要返回给前端的数据：blogId   minTime（这次查询的最小时间戳）, offset(以上次查询的与score最小值相同的元素的个数，作为偏移量，防止重复数据）
         List<Long> blogIds = new ArrayList<>(typedTuples.size());
         long minTime = 0L;
+        //[min,max]是闭区间，所以高低也得跳过一个。
         int offsetNum = 1;
+        //循环每一个结果，目的是得到上次查询的最小时间戳minTime和偏移量。
         for (ZSetOperations.TypedTuple<String> typedTuple : typedTuples) {
             String blogId = typedTuple.getValue();
             blogIds.add(Long.valueOf(blogId));
@@ -181,13 +188,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 offsetNum = 1;
                 minTime = timeStamp;
             }
-//            minTime = timeStamp < minTime? timeStamp: minTime;
         }
-        offsetNum = minTime == max ? offsetNum : offsetNum + offset;
+        //再次确认
+        offsetNum = minTime != max ? offsetNum : offsetNum + offset;
         String idStr = StrUtil.join(",", blogIds);
-        //根据id查blog
+        //根据id查blog，自定义排序
         List<Blog> blogs = query().in("id", blogIds).last("ORDER BY FIELD(id," + idStr + ")").list();
-
         //封装 返回
         for (Blog blog : blogs) {
             queryBlogUser(blog);
@@ -201,6 +207,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
         return Result.ok(r);
     }
+
 
 
 }

@@ -10,10 +10,9 @@ import com.vls.entity.Shop;
 import com.vls.mapper.ShopMapper;
 import com.vls.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.vls.utils.CacheClient;
-import com.vls.utils.RedisConstants;
-import com.vls.utils.RedisData;
-import com.vls.utils.SystemConstants;
+import com.vls.utils.*;
+import org.redisson.api.RBloomFilter;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
@@ -23,6 +22,7 @@ import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -41,23 +41,49 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {
 
+    private RBloomFilter<Long> bloomFilter = null;
+
+    @Resource
+    private BloomFilterUtil bloomFilterUtil;
+
+    @Resource
+    private RedissonClient redissonClient;
+
+
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
     @Resource
     private CacheClient  cacheClient;
 
+
+    @PostConstruct // 项目启动的时候执行该方法，也可以理解为在spring容器初始化的时候执行该方法
+    public void init() {
+        // 启动项目时初始化bloomFilter
+        List<Shop> shopList = this.list();
+        bloomFilter = bloomFilterUtil.create("ShopIdList", 10000L, 0.03);
+        for (Shop shop : shopList) {
+            bloomFilter.add(shop.getId());
+        }
+    }
+
+
     @Override
     public Result queryById(Long id) {
-        //缓存穿透
-        Shop shop = cacheClient.queryWithPassThrough(
-                RedisConstants.CACHE_SHOP_KEY, id, Shop.class, this::getById, RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
-
 //        //互斥锁解决缓存击穿
 //        Shop shop = cacheClient.queryWithLogicalExpire(
 //                RedisConstants.CACHE_SHOP_KEY, id, Shop.class, this::getById, RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
 
-        return Result.ok(shop);
+        //布隆过滤器解决缓存穿透
+        if(bloomFilter.contains(id)){
+            Shop shop = cacheClient.queryWithPassThrough(RedisConstants.CACHE_SHOP_KEY,
+                    id,Shop.class, this::getById, RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+
+            return Result.ok(shop);
+        }else{
+            return Result.fail("查询数据即不存在缓存也不存在数据库");
+        }
+
     }
 
     @Override
@@ -80,10 +106,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         if(x == null || y == null){
             Page<Shop> page = query().eq("type_id", typeId)
                     .page(new Page<>(current, SystemConstants.DEFAULT_PAGE_SIZE));
-
             return Result.ok(page.getRecords());
         }
-
         //解析分页参数
         int from = (current - 1) * SystemConstants.DEFAULT_PAGE_SIZE;
         int end = current * SystemConstants.DEFAULT_PAGE_SIZE;

@@ -24,10 +24,10 @@ public class LoginInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         //判断是否需要拦截：
         UserDTO user = UserHolder.getUser();
-        if(user == null){
-            response.setStatus(401);
-            return false;
-        }
+//        if(user == null){
+//            response.setStatus(401);
+//            return false;
+//        }
 
         return true;
 

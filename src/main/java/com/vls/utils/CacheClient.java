@@ -4,7 +4,6 @@ import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.vls.entity.Shop;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -28,9 +27,11 @@ public class CacheClient {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
+
     public void set(String key, Object value, Long time, TimeUnit unit) {
         stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(value), time, unit);
     }
+
 
     public void setWithLogicalExpire(String key, Object value, Long time, TimeUnit unit){
         RedisData redisData = new RedisData();
@@ -68,7 +69,6 @@ public class CacheClient {
         // 6.存在，写入redis
         this.set(key, r, time, unit);
         return r;
-
     }
 
     /**
@@ -85,6 +85,7 @@ public class CacheClient {
      */
     public <R, ID> R queryWithLogicalExpire(
             String keyPrefix, ID id, Class<R> type, Function<ID,R> dbFallBack, Long time, TimeUnit unit ) {
+
         String key = keyPrefix + id;
         //从redis查缓存
         String json = stringRedisTemplate.opsForValue().get(key);
@@ -92,12 +93,11 @@ public class CacheClient {
         if(StrUtil.isBlank(json)){
             return null;
         }
-        //命中：判断缓存信息是否过期
         //反序列化获得redisData对象
         RedisData redisData = JSONUtil.toBean(json, RedisData.class);
-        R r = JSONUtil.toBean((JSONObject) redisData.getData(),type);
+        R r = JSONUtil.toBean( (JSONObject)redisData.getData(),type);
         //查看数据是否过期
-        if(!redisData.getExpireTime().isAfter(LocalDateTime.now())){
+        if(redisData.getExpireTime().isAfter(LocalDateTime.now())){
             return r;
         }
         //过期了，缓存重建，尝试获取互斥锁
@@ -123,6 +123,8 @@ public class CacheClient {
         return r;
     }
 
+
+
     private boolean tryLock(String key){
         Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
         return BooleanUtil.isTrue(flag);//拆箱，防止空指针异常
@@ -140,7 +142,7 @@ public class CacheClient {
         if(StrUtil.isNotBlank(json)){
             return JSONUtil.toBean(json, type);
         }
-        //没查到，说明JSON要么是空字符串要么是null
+        //没查到，说明JSON要么是BLANK   要么是空字符串要么是null
         //判断命中的值是否是空值
         if(json != null){
             return null;
@@ -168,12 +170,14 @@ public class CacheClient {
             }
             //数据库有就返回,并写入redis
             this.set(key, r,time, unit);
+
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         } finally {
             //释放锁
             unLock(lockKey);
         }
+
         return r;
     }
 

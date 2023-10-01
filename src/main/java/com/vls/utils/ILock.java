@@ -1,5 +1,8 @@
 package com.vls.utils;
 
+
+
+//分布式锁接口
 public interface ILock {
 
     /**
@@ -8,7 +11,6 @@ public interface ILock {
      * @return true为获得成功
      */
     boolean tryLock(Long timeoutSec);
-
 
     void unlock();
 }

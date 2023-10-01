@@ -49,8 +49,6 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
             follow.setUserId(userId);
             follow.setFollowUserId(followId);
             boolean isSuccess = save(follow);
-
-
             if(isSuccess){
                 stringRedisTemplate.opsForSet().add(key, followId.toString());
             }
@@ -60,7 +58,6 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
             if(isSuccess){
                 stringRedisTemplate.opsForSet().remove(key, followId.toString());
             }
-
         }
         return Result.ok();
     }
@@ -82,6 +79,7 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         //获取当前用户id
         Long userId = UserHolder.getUser().getId();
         String key1 = RedisConstants.FOLLOW_USER_KEY + userId;
+        //获取当前用户点击的用户的id
         String key2 = RedisConstants.FOLLOW_USER_KEY + id;
         //当前用户的关注列表与查看的某人的关注列表求交集
         Set<String> commons = stringRedisTemplate.opsForSet().intersect(key1, key2);
@@ -93,4 +91,6 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
         List<UserDTO> userDTOS = users.stream().map(user -> BeanUtil.copyProperties(user, UserDTO.class)).collect(Collectors.toList());
         return Result.ok(userDTOS);
     }
+
+
 }

@@ -66,6 +66,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return Result.ok();
     }
 
+
     @Override
     public Result login(LoginFormDTO loginForm, HttpSession session) {
         // 校验手机号，
@@ -93,8 +94,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         Map<String, Object> map = BeanUtil.beanToMap(userDTO,
                 new HashMap<>(),
                 CopyOptions.create().setFieldValueEditor((filedName, filedValue) -> filedValue.toString()));
-        //设置有效期30min,
+
         stringRedisTemplate.opsForHash().putAll(LOGIN_USER_KEY + token, map);//long 转string类型会出错。
+        //设置有效期30min
         stringRedisTemplate.expire(LOGIN_USER_KEY + token, 30, TimeUnit.MINUTES);
         return Result.ok(token);
     }
@@ -123,6 +125,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         return Result.ok();
     }
 
+
     @Override
     public Result signCount() {
         //获取用户信息
@@ -140,7 +143,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                 BitFieldSubCommands.create().get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)//几个比特位
                          ).valueAt(0)
         );
-
         if(result == null || result.isEmpty()){
             return Result.ok();
         }
@@ -156,10 +158,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             }else {
                 count++;
             }
-
             num >>>= 1;
         }
-
         return Result.ok(count);
     }
+
+
 }
